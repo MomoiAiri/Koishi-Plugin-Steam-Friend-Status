@@ -1,9 +1,12 @@
-import { Context, Session } from "koishi"
+import { Context, h, Session } from "koishi"
 import { SteamUser } from "."
 import path from "path"
+import * as fs from 'fs'
+import exp from "constants"
 
 const steamIdOffset:number = 76561197960265728
 const steamWebApiUrl = 'http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/'
+const steamstatus:{[key:number]:string} = {0:'离线',1:'在线',2:'忙碌',3:'离开',4:'打盹',5:'想交易',6:'想玩'}
 
 interface SteamUserInfo{
     response:{
@@ -38,7 +41,8 @@ function getSteamId(steamIdOrSteamFriendCode:string):string{
     }
     const steamId = Number(steamIdOrSteamFriendCode)
     if(steamId < steamIdOffset){
-        return (steamId + steamIdOffset).toString()
+        const result = BigInt(steamId) + BigInt(steamIdOffset)
+        return result.toString()
     }
     else{
         return steamIdOrSteamFriendCode
@@ -69,10 +73,13 @@ export async function bindPlayer(ctx:Context, friendcodeOrId:string, session:Ses
                 userName:session.event.user?.name,
                 steamId:playerData.steamid,
                 steamStatu:playerData.personastate,
-                lastPlayedGame:playerData.gameextrainfo == undefined ? playerData.gameextrainfo : 'null',
+                lastPlayedGame:playerData.gameextrainfo == undefined ? playerData.gameextrainfo : 'none',
                 lastUpdateTime:Date.now().toString()
             }
             await ctx.database.create('SteamUser',userdata)
+            const headshot = await ctx.http.get(playerData.avatarmedium,{responseType:'arraybuffer'})
+            const filepath = path.join(__dirname,`img/steamuser${playerData.steamid}.jpg`)
+            fs.writeFileSync(filepath,Buffer.from(headshot))
             return '绑定成功'
         }
     }
@@ -82,7 +89,10 @@ export async function bindPlayer(ctx:Context, friendcodeOrId:string, session:Ses
 export async function unbindPlayer(ctx:Context, session:Session):Promise<string>{
     let userId = session.event.user?.id
     if(userId){
-        if((await ctx.database.get('SteamUser',{userId:Number(userId)})).length === 1){
+        const userData = await ctx.database.get('SteamUser',{userId:Number(userId)})
+        if(userData.length === 1){
+            const filepath = path.join(__dirname,`img/steamuser${userData[0].steamId}.jpg`)
+            fs.unlink(filepath,(err)=>{console.log('删除头像出错',err)})
             await ctx.database.remove('SteamUser',{userId:Number(userId)})
             return '解绑成功'
         }
@@ -95,7 +105,7 @@ export async function unbindPlayer(ctx:Context, session:Session):Promise<string>
     }
 }
 //循环查询数据库中玩家信息
-async function intervalSteamUserInfo(ctx:Context, steamApiKey:string):Promise<SteamUserInfo>{
+export async function getSteamUserInfoByDatabase(ctx:Context, steamApiKey:string):Promise<SteamUserInfo>{
     const userInfo = await ctx.database.get('SteamUser',{})
     let steamIds:string[] = []
     for(let i = 0; i < userInfo.length; i++){
@@ -103,7 +113,7 @@ async function intervalSteamUserInfo(ctx:Context, steamApiKey:string):Promise<St
     }
     const requestUrl = `${steamWebApiUrl}?key=${steamApiKey}&steamIds=${steamIds.join(',')}`
     const response = await ctx.http.get(requestUrl)
-    if(!response || response.data.players.length === 0){
+    if(!response || response.response.players.length === 0){
         return undefined
     }
     return response as SteamUserInfo
@@ -119,48 +129,108 @@ async function getSteamUserInfo(ctx:Context, steamApiKey:string, steamid:string)
     return response as SteamUserInfo
 }
 //检查玩家状态是否变化
-async function getUserStatusChanged(ctx:Context, steamApiKey:string):Promise<Array<any>>{
-    const steamUserInfo = await intervalSteamUserInfo(ctx, steamApiKey)
+export async function getUserStatusChanged(ctx:Context, steamUserInfo:SteamUserInfo):Promise<Array<any>>{
     if(steamUserInfo === undefined) return
     let msgArray:Array<any> = []
     for(let i = 0; i < steamUserInfo.response.players.length; i++){
         const playerTemp = steamUserInfo.response.players[i]
         const userData = (await ctx.database.get('SteamUser',{steamId:playerTemp.steamid}))[0]
         //开始玩了
-        if(userData.lastPlayedGame == 'null' && playerTemp.gameextrainfo){
+        if(userData.lastPlayedGame == 'none' && playerTemp.gameextrainfo){
             await ctx.database.set('SteamUser', {steamId: userData.steamId}, {lastPlayedGame: playerTemp.gameextrainfo})
             msgArray.push(`${userData.userName}开始玩${playerTemp.gameextrainfo}了\n`)
             continue
         }
         //换了一个游戏玩
-        if(userData.lastPlayedGame != playerTemp.gameextrainfo && userData.lastPlayedGame != 'null'){
+        if(userData.lastPlayedGame != playerTemp.gameextrainfo && userData.lastPlayedGame != 'none'){
             const lastPlayedGame = userData.lastPlayedGame
             await ctx.database.set('SteamUser', {steamId: userData.steamId}, {lastPlayedGame: playerTemp.gameextrainfo})
             msgArray.push(`${userData.userName}不玩${lastPlayedGame}了，开始玩${playerTemp.gameextrainfo}了\n`)
             continue
         }
         //不玩辣
-        if(!playerTemp.gameextrainfo && userData.lastPlayedGame != 'null'){
+        if(!playerTemp.gameextrainfo && userData.lastPlayedGame != 'none'){
             const lastPlayedGame = userData.lastPlayedGame
-            await ctx.database.set('SteamUser', {steamId: userData.steamId}, {lastPlayedGame: 'null'})
+            await ctx.database.set('SteamUser', {steamId: userData.steamId}, {lastPlayedGame: 'none'})
             msgArray.push(`${userData.userName}停止玩${lastPlayedGame}了\n`)
             continue
         }
     }
+    return msgArray
 }
 //获取好友状态图片
-async function getFriendStatusImg(ctx:Context, userData:SteamUserInfo){
+export async function getFriendStatusImg(ctx:Context, userData:SteamUserInfo, botid:string){
     const gamingUsers = userData.response.players.filter(player => player.personastate == 1 && player.gameextrainfo)
     const onlineUsers = userData.response.players.filter(player => player.personastate !=0 && !player.gameextrainfo)
     const offlineUsers = userData.response.players.filter(player => player.personastate == 0)
-    const url = path.join(__dirname,'html/index.html')
+    const url = path.join(__dirname,'html/steamFriendList.html')
     const page = await ctx.puppeteer.page()
     page.setViewport({width:227,height:0})
     await page.goto(url)
-    await page.evaluate(()=>{
-        var gamingList = document.getElementById('gamingList')
-        var onlineList = document.getElementById('onlineList')
-        var offlineList = document.getElementById('offlineList')
-    })
+    await page.evaluate((botid,gamingUsers,onlineUsers,offlineUsers,steamstatus)=>{
+        var bot = document.getElementsByClassName('bot')[0]
+        var botHeadshot = bot.querySelector('img')
+        var botName = bot.querySelector('p')
+        var gamingList = document.getElementById('ul-gaming')
+        var onlineList = document.getElementById('ul-online')
+        var offlineList = document.getElementById('ul-offline')
+        var titles = document.getElementsByClassName('title')
+        botHeadshot.setAttribute('src',`../img/bot${botid}.jpg`)
+        botName.innerHTML = `<b>${botid}</b>`
+        titles[0].innerHTML = `游戏中（${gamingUsers.length}）`
+        titles[1].innerHTML = `在线好友（${onlineUsers.length}）`
+        titles[2].innerHTML = `离线好友（${offlineUsers.length}）`
+        for(let i = 0; i < gamingUsers.length; i++){
+            const li = document.createElement('li')
+            li.setAttribute('class','friend')
+            li.innerHTML = `<img src="../img/steamuser${gamingUsers[i].steamid}.jpg" class="headshot-online">
+                            <div class="name-and-status">
+                                <p class="name-gaming">${gamingUsers[i].personaname}</p>
+                                <p class="status-gaming">${gamingUsers[i].gameextrainfo}</p>
+                            </div>`
+            gamingList.appendChild(li)
+        }
+        for(let i = 0; i < onlineUsers.length; i++){
+            const li = document.createElement('li')
+            li.setAttribute('class','friend')
+            li.innerHTML = `<img src="../img/steamuser${onlineUsers[i].steamid}.jpg" class="headshot-online">
+                            <div class="name-and-status">
+                                <p class="name-online">${onlineUsers[i].personaname}</p>
+                                <p class="status-online">${steamstatus[onlineUsers[i].personastate]}</p>
+                            </div>`
+            onlineList.appendChild(li)
+        }
+        for(let i = 0; i < offlineUsers.length; i++){
+            const li = document.createElement('li')
+            li.setAttribute('class','friend')
+            li.innerHTML = `<img src="../img/steamuser${offlineUsers[i].steamid}.jpg" class="headshot-online">
+                            <div class="name-and-status">
+                                <p class="name-offline">${offlineUsers[i].personaname}</p>
+                                <p class="status-offline">${steamstatus[offlineUsers[i].personastate]}</p>
+                            </div>`
+            offlineList.appendChild(li)
+        }
+    },botid,gamingUsers,onlineUsers,offlineUsers,steamstatus)
     const image = await page.screenshot({fullPage:true,type:'png',encoding:'binary'})
+    const buffer = Buffer.from(image)
+    return h.image(buffer,'image/png')
+}
+
+export async function steamInterval(ctx:Context, apiKey:string){
+    const userdata = await getSteamUserInfoByDatabase(ctx, apiKey)
+    const messageList:Array<any> = await getUserStatusChanged(ctx, userdata)
+    const channel = await ctx.database.get('channel',{})
+    let tempBotId = ''
+    let tempImg = undefined
+    messageList.push(tempImg)
+    const supportPlatform = ['onebot','red']
+    for(let i = 0; i < channel.length; i++){
+        if(tempBotId!=channel[i].assignee && supportPlatform.includes(channel[i].platform)){
+            tempBotId = channel[i].assignee
+            tempImg = await getFriendStatusImg(ctx, userdata, tempBotId)
+        }
+        if(channel[i].usingSteam){
+            ctx.bots[`${channel[i].platform}:${channel[i].assignee}`].sendMessage(channel[i].id,messageList)
+        }
+    }
 }

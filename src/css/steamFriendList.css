@@ -25,6 +25,9 @@ ul{
 }
 .header .bot{
     display: flex;
+}
+.header .bot .text{
+    display: flex;
     flex-direction: column;
     justify-content: center;
 }
