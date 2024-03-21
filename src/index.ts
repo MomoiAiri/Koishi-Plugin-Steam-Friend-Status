@@ -1,8 +1,9 @@
 import { Context, Schema, h } from 'koishi'
 import Puppeteer from 'koishi-plugin-puppeteer'
-import { bindPlayer, getFriendStatusImg, getSteamUserInfoByDatabase, steamInterval, unbindPlayer } from './steam'
+import { bindPlayer, getFriendStatusImg, getSelfFriendcode, getSteamUserInfoByDatabase, selectUsersByGroup, steamInterval, unbindPlayer, updataPlayerHeadshots } from './steam'
 import * as fs from 'fs'
 import * as path from 'path'
+import { getGroupHeadshot, getUserHeadshot } from './util'
 
 export const name = 'steam-friend-status'
 
@@ -16,10 +17,10 @@ declare module 'koishi'{
   }
 }
 export interface SteamUser{
-  userId:number,
+  userId:string,
   userName:string,//用户名
   steamId:string,
-  steamStatu:number,
+  effectGroups:string[],
   lastPlayedGame:string,
   lastUpdateTime:string,
 }
@@ -40,36 +41,86 @@ export function apply(ctx: Context, config:Config) {
   })
 
   ctx.model.extend('SteamUser', {
-    userId: 'unsigned',
+    userId: 'string',
     userName: 'string',
     steamId: 'string',
-    steamStatu: 'integer',
+    effectGroups: 'list',
     lastPlayedGame: 'string',
     lastUpdateTime: 'string',
   },{primary:'userId'})
 
   initBotsHeadshots(ctx);
-
-  const si = setInterval(function(){steamInterval(ctx,config.SteamApiKey)},1*60*1000)
-
-  ctx.command('截图')
-  .action(async({session})=>{
-    const data = await getSteamUserInfoByDatabase(ctx,config.SteamApiKey)
-    return await getFriendStatusImg(ctx,data,'762026456')
-  })
+  // steamInterval(ctx,config.SteamApiKey)
+  ctx.setInterval(function(){steamInterval(ctx,config.SteamApiKey)},config.interval)
 
   ctx.command('绑定steam <steamid:text>')
+  .usage('绑定steam账号，参数可以是好友码也可以是ID')
   .action(async({session},steamid)=>{
     const result = await bindPlayer(ctx,steamid,session,config.SteamApiKey)
     return result
   })
 
   ctx.command('解绑steam')
+  .usage('解绑steam账号')
   .action(async({session})=>{
     const result = await unbindPlayer(ctx,session)
     return result
   })
   
+  ctx.command('steam <word:text>')
+  .usage('开启或关闭群通报')
+  .shortcut('开启steam', { args: ['on'] })
+  .shortcut('关闭steam', { args: ['off'] })
+  .channelFields(['usingSteam'])
+  .userFields(['authority'])
+  .action(async({session},text)=>{
+    // 获取 session.event.member.roles 和 session.author.roles
+    const eventMemberRoles = session.event.member.roles || [];
+    const authorRoles = session.author.roles || [];
+    // 合并两个角色列表并去重
+    const roles = Array.from(new Set([...eventMemberRoles, ...authorRoles]));
+    // 检查是否有所需角色
+    const hasRequiredRole = roles.includes('admin') || roles.includes('owner');
+    // 检查用户是否有足够的权限：authority > 1 或者角色是 admin 或 owner
+    if (session.user.authority > 1 || hasRequiredRole) {
+      switch (text) {
+        case "on":
+        case "开启":
+          session.channel.usingSteam = true;
+          return "开启成功";
+        case "off":
+        case "关闭":
+          session.channel.usingSteam = false;
+          return "关闭成功";
+        default:
+          return "无效指令";
+      }
+    } else {
+      return "您没有权限执行此操作";
+    }
+  })
+
+  ctx.command('更新steam')
+  .usage('更新绑定的steam用户的头像')
+  .action(async({session})=>{
+    await updataPlayerHeadshots(ctx,config.SteamApiKey)
+    return "更新成功"
+  })
+  
+  ctx.command('看看steam')
+  .usage('查看当前绑定过的玩家状态')
+  .action(async({session})=>{
+    const allUserData = await ctx.database.get('SteamUser',{})
+    const users = await selectUsersByGroup(allUserData,session.event.channel.id)
+    const data = await getSteamUserInfoByDatabase(ctx,users,config.SteamApiKey)
+    return await getFriendStatusImg(ctx,data,session.event.selfId)
+  })
+
+  ctx.command('steam信息')
+  .usage('查看自己的好友码和ID')
+  .action(async({session})=>{
+    return `你的好友码为: ${await getSelfFriendcode(ctx,session)}`
+  })
 }
 
 async function initBotsHeadshots(ctx:Context){
@@ -79,12 +130,13 @@ async function initBotsHeadshots(ctx:Context){
     const platforms = ['onebot','red']
     if(platforms.includes(channel[i].platform)){
       tempbots.push(channel[i].assignee)
+      // if(channel[i].usingSteam){
+      //   await getGroupHeadshot(ctx,channel[i].id)
+      // }
     }
   }
   const bots = [...new Set(tempbots)]
   for(let i = 0; i < bots.length; i++){
-    const headshot = await ctx.http.get(`http://q.qlogo.cn/headimg_dl?dst_uin=${bots[i]}&spec=640`,{responseType:'arraybuffer'})
-    const filepath = path.join(__dirname,`img/bot${bots[i]}.jpg`)
-    fs.writeFileSync(filepath,Buffer.from(headshot))
+    await getUserHeadshot(ctx,bots[i])
   }
 }

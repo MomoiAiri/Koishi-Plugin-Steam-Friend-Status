@@ -62,6 +62,7 @@ ul{
     height: 46px;
     padding: 7px 0px 7px 13px;
     display: flex;
+    overflow: hidden;
 }
 .friend .headshot-online{
     display: block;
