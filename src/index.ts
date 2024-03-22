@@ -1,6 +1,6 @@
 import { Context, Schema, h } from 'koishi'
 import Puppeteer from 'koishi-plugin-puppeteer'
-import { bindPlayer, getFriendStatusImg, getSelfFriendcode, getSteamUserInfoByDatabase, selectUsersByGroup, steamInterval, unbindPlayer, updataPlayerHeadshots } from './steam'
+import { bindPlayer, getFriendStatusImg, getSelfFriendcode, getSteamUserInfoByDatabase, selectUsersByGroup, steamInterval, unbindAll, unbindPlayer, updataPlayerHeadshots } from './steam'
 import * as fs from 'fs'
 import * as path from 'path'
 import { getGroupHeadshot, getUserHeadshot } from './util'
@@ -20,18 +20,21 @@ export interface SteamUser{
   userId:string,
   userName:string,//用户名
   steamId:string,
+  steamName:string,//Steam用户名
   effectGroups:string[],
   lastPlayedGame:string,
   lastUpdateTime:string,
 }
 export interface Config{
   SteamApiKey:string,
-  interval:number
+  interval:number,
+  useSteamName:boolean,
 }
 
 export const Config: Schema<Config> = Schema.object({
-  SteamApiKey: Schema.string().description('Steam API Key').required(),
-  interval: Schema.number().default(300000).description('查询间隔'),
+  SteamApiKey: Schema.string().description('Steam API Key，获取方式：https://partner.steamgames.com/doc/webapi_overview/auth').required(),
+  interval: Schema.number().default(300).description('查询间隔,单位：秒'),
+  useSteamName: Schema.boolean().default(false).description('使用Steam昵称,关闭时使用的QQ昵称'),
 })
 
 export function apply(ctx: Context, config:Config) {  
@@ -44,14 +47,14 @@ export function apply(ctx: Context, config:Config) {
     userId: 'string',
     userName: 'string',
     steamId: 'string',
+    steamName:'string',
     effectGroups: 'list',
     lastPlayedGame: 'string',
     lastUpdateTime: 'string',
   },{primary:'userId'})
 
   initBotsHeadshots(ctx);
-  // steamInterval(ctx,config.SteamApiKey)
-  ctx.setInterval(function(){steamInterval(ctx,config.SteamApiKey)},config.interval)
+  ctx.setInterval(function(){steamInterval(ctx,config.SteamApiKey,config.useSteamName)},config.interval * 1000)
 
   ctx.command('绑定steam <steamid:text>')
   .usage('绑定steam账号，参数可以是好友码也可以是ID')
@@ -64,6 +67,13 @@ export function apply(ctx: Context, config:Config) {
   .usage('解绑steam账号')
   .action(async({session})=>{
     const result = await unbindPlayer(ctx,session)
+    return result
+  })
+
+  ctx.command('解绑全部steam')
+  .usage('解绑在所有群的steam账号')
+  .action(async({session})=>{
+    const result = await unbindAll(ctx,session)
     return result
   })
   
@@ -122,7 +132,7 @@ export function apply(ctx: Context, config:Config) {
     return `你的好友码为: ${await getSelfFriendcode(ctx,session)}`
   })
 }
-
+//初始化QQ相关平台的bot头像
 async function initBotsHeadshots(ctx:Context){
   const channel = await ctx.database.get('channel',{})
   let tempbots = []

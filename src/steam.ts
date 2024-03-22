@@ -71,6 +71,7 @@ export async function bindPlayer(ctx:Context, friendcodeOrId:string, session:Ses
             userId:userid,
             userName:session.event.user.name,
             steamId:playerData.steamid,
+            steamName:playerData.personaname,
             effectGroups:[session.event.channel.id],
             lastPlayedGame:playerData.gameextrainfo == undefined ? playerData.gameextrainfo : undefined,
             lastUpdateTime:Date.now().toString()
@@ -92,6 +93,7 @@ export async function bindPlayer(ctx:Context, friendcodeOrId:string, session:Ses
                 userId:userid,
                 userName:session.event.user?.name,
                 steamId:playerData.steamid,
+                steamName:playerData.personaname,
                 effectGroups:effectGroups,
                 lastPlayedGame:playerData.gameextrainfo == undefined ? playerData.gameextrainfo : undefined,
                 lastUpdateTime:Date.now().toString()
@@ -124,6 +126,21 @@ export async function unbindPlayer(ctx:Context, session:Session):Promise<string>
         return '用户未曾绑定，无法解绑'
     }
 }
+//解绑全部
+export async function unbindAll(ctx:Context, session:Session):Promise<string>{
+    const userid = session.event.user?.id
+    if(!userid){
+        return '未获取到用户ID，解绑失败'
+    }
+    const userData = (await ctx.database.get('SteamUser',{userId:userid}))
+    if(userData.length < 1){
+        return '用户未曾绑定，无法解绑'
+    }
+    const filepath = path.join(__dirname,`img/steamuser${userData[0].steamId}.jpg`)
+    fs.unlink(filepath,(err)=>{console.log('删除头像出错',err)})
+    await ctx.database.remove('SteamUser',{userId:userid})
+    return '解绑成功'
+}
 //查询数据库中玩家信息
 export async function getSteamUserInfoByDatabase(ctx:Context, steamusers:SteamUser[], steamApiKey:string):Promise<SteamUserInfo>{
     let steamIds:string[] = []
@@ -147,30 +164,34 @@ async function getSteamUserInfo(ctx:Context, steamApiKey:string, steamid:string)
     return response as SteamUserInfo
 }
 //检查玩家状态是否变化
-export async function getUserStatusChanged(ctx:Context, steamUserInfo:SteamUserInfo):Promise<{[key:string]:string}>{
+export async function getUserStatusChanged(ctx:Context, steamUserInfo:SteamUserInfo, usingSteamName:boolean):Promise<{[key:string]:string}>{
     if(steamUserInfo === undefined) return
     let msgArray:{[key:string]:string} = {}
     for(let i = 0; i < steamUserInfo.response.players.length; i++){
         const playerTemp = steamUserInfo.response.players[i]
         const userData = (await ctx.database.get('SteamUser',{steamId:playerTemp.steamid}))[0]
+        //如果steam名称有更改
+        if(userData.steamName!== playerTemp.personaname){
+            ctx.database.set('SteamUser', {steamId: playerTemp.steamid}, {steamName: playerTemp.personaname})
+        }
         //开始玩了
         if(!userData.lastPlayedGame && playerTemp.gameextrainfo){
             await ctx.database.set('SteamUser', {steamId: userData.steamId}, {lastPlayedGame: playerTemp.gameextrainfo})
-            msgArray[userData.userId] = (`${userData.userName}开始玩${playerTemp.gameextrainfo}了\n`)
+            msgArray[userData.userId] = (`${usingSteamName?playerTemp.personaname:userData.userName}开始玩${playerTemp.gameextrainfo}了\n`)
             continue
         }
         //换了一个游戏玩
         if(userData.lastPlayedGame != playerTemp.gameextrainfo && userData.lastPlayedGame && playerTemp.gameextrainfo){
             const lastPlayedGame = userData.lastPlayedGame
             await ctx.database.set('SteamUser', {steamId: userData.steamId}, {lastPlayedGame: playerTemp.gameextrainfo})
-            msgArray[userData.userId] = (`${userData.userName}不玩${lastPlayedGame}了，开始玩${playerTemp.gameextrainfo}了\n`)
+            msgArray[userData.userId] = (`${usingSteamName?playerTemp.personaname:userData.userName}不玩${lastPlayedGame}了，开始玩${playerTemp.gameextrainfo}了\n`)
             continue
         }
         //不玩辣
         if(!playerTemp.gameextrainfo && userData.lastPlayedGame){
             const lastPlayedGame = userData.lastPlayedGame
             await ctx.database.set('SteamUser', {steamId: userData.steamId}, {lastPlayedGame: ''})
-            msgArray[userData.userId] = (`${userData.userName}停止玩${lastPlayedGame}了\n`)
+            msgArray[userData.userId] = (`${usingSteamName?playerTemp.personaname:userData.userName}停止玩${lastPlayedGame}了\n`)
             continue
         }
     }
@@ -240,17 +261,17 @@ export async function getFriendStatusImg(ctx:Context, userData:SteamUserInfo, bo
     return h.image(buffer,'image/png')
 }
 //循环检测玩家状态
-export async function steamInterval(ctx:Context, apiKey:string){
+export async function steamInterval(ctx:Context, apiKey:string, useSteamName:boolean){
     const allUserData = await ctx.database.get('SteamUser',{})
     const userdata = await getSteamUserInfoByDatabase(ctx, allUserData, apiKey)
-    const changeMessage:{[key:string]:string} = await getUserStatusChanged(ctx, userdata)
+    const changeMessage:{[key:string]:string} = await getUserStatusChanged(ctx, userdata, useSteamName)
     if(Object.keys(changeMessage).length > 0){
         const supportPlatform = ['onebot','red']
         const channel = await ctx.database.get('channel',{usingSteam:true,platform:supportPlatform})
         for(let i = 0; i < channel.length; i++){
             const groupMessage:Array<string|h> = []
             for(let j = 0; j < allUserData.length; j++){
-                if(allUserData[j].effectGroups.includes(channel[i].id)){
+                if(allUserData[j].effectGroups.includes(channel[i].id) && changeMessage[allUserData[j].userId]){
                     groupMessage.push(changeMessage[allUserData[j].userId])
                 }
             }
@@ -273,21 +294,25 @@ export async function updataPlayerHeadshots(ctx:Context, apiKey:string){
         fs.writeFileSync(filepath,Buffer.from(headshot))
     }
 }
-
+//获取自己的好友码
 export async function getSelfFriendcode(ctx:Context, session:Session):Promise<string>{
     const userdata = await ctx.database.get('SteamUser',{userId:session.event.user.id})
     if(userdata.length==0){
         return '用户未绑定，无法查询'
     }
+    if(userdata[0].userName!=session.event.user.name){
+        await ctx.database.set('SteamUser',{userId:session.event.user.id},{userName:session.event.user.name})
+    }
     const steamID = userdata[0].steamId
     const steamFriendCode = BigInt(steamID) - BigInt(steamIdOffset)
     return steamFriendCode.toString()
 }
-
+//筛选在特定群中的用户
 export function selectUsersByGroup(steamusers:SteamUser[], groupid:string):SteamUser[]{
     const users = steamusers.filter(user => user.effectGroups.includes(groupid))
     return users
 }
+//根据群号筛选从API中获取的用户数据
 export function selectApiUsersByGroup(steamusers_api:SteamUserInfo, steamusers_database:SteamUser[], groupid:string):SteamUserInfo{
     let result:SteamUserInfo = {
         response:{
@@ -304,6 +329,17 @@ export function selectApiUsersByGroup(steamusers_api:SteamUserInfo, steamusers_d
     return result
 }   
 
-export async function getSteamStatusImageInGroup(ctx:Context, session:Session, apiKey:string){
-
+export async function getAllUserFriendCodesInGroup(ctx:Context, groupid:string):Promise<string>{
+    let result = []
+    const allUserData = await ctx.database.get('SteamUser',{})
+    const groupUserData = selectUsersByGroup(allUserData, groupid)
+    for(let i = 0; i < groupUserData.length; i++){
+        result.push(`${groupUserData[i].userName}: ${(BigInt(groupUserData[i].steamId)-BigInt(steamIdOffset)).toString()}`)
+    }
+    if(result.length == 0){
+        return '本群没有用户绑定'
+    }
+    else{
+        return result.join('\n')
+    }
 }

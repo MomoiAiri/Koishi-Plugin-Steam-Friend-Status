@@ -9,6 +9,11 @@
     "dist"
   ],
   "license": "MIT",
+  "homepage": "https://github.com/MomoiAiri/Koishi-Plugin-Steam-Friend-Status",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MomoiAiri/Koishi-Plugin-Steam-Friend-Status.git"
+  },
   "keywords": [
     "chatbot",
     "koishi",
