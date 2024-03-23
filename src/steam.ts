@@ -280,7 +280,10 @@ export async function steamInterval(ctx:Context, apiKey:string, useSteamName:boo
             if(groupMessage.length > 0){
                 const image = await getFriendStatusImg(ctx, userInGroup, channel[i].assignee)
                 groupMessage.push(image)
-                ctx.bots[`${channel[i].platform}:${channel[i].assignee}`].sendMessage(channel[i].id,groupMessage)
+                const bot = ctx.bots[`${channel[i].platform}:${channel[i].assignee}`]
+                if(bot){
+                    bot.sendMessage(channel[i].id,groupMessage)
+                }
             }
         }
     }
@@ -299,7 +302,7 @@ export async function updataPlayerHeadshots(ctx:Context, apiKey:string){
 export async function getSelfFriendcode(ctx:Context, session:Session):Promise<string>{
     const userdata = await ctx.database.get('SteamUser',{userId:session.event.user.id})
     if(userdata.length==0){
-        return '用户未绑定，无法查询'
+        return '用户未绑定,无法获得好友码'
     }
     if(userdata[0].userName!=session.event.user.name){
         await ctx.database.set('SteamUser',{userId:session.event.user.id},{userName:session.event.user.name})
