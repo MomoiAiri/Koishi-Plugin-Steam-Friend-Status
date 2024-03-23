@@ -116,6 +116,7 @@ export async function unbindPlayer(ctx:Context, session:Session):Promise<string>
         if(userData.effectGroups.length == 1){
             const filepath = path.join(__dirname,`img/steamuser${userData.steamId}.jpg`)
             fs.unlink(filepath,(err)=>{console.log('删除头像出错',err)})
+            ctx.database.remove('SteamUser',{userId:userid})
         }
         const effectGroups = userData.effectGroups
         effectGroups.splice(effectGroups.indexOf(channelid),1)
@@ -177,21 +178,21 @@ export async function getUserStatusChanged(ctx:Context, steamUserInfo:SteamUserI
         //开始玩了
         if(!userData.lastPlayedGame && playerTemp.gameextrainfo){
             await ctx.database.set('SteamUser', {steamId: userData.steamId}, {lastPlayedGame: playerTemp.gameextrainfo})
-            msgArray[userData.userId] = (`${usingSteamName?playerTemp.personaname:userData.userName}开始玩${playerTemp.gameextrainfo}了\n`)
+            msgArray[userData.userId] = (`${usingSteamName?playerTemp.personaname:userData.userName} 开始玩 ${playerTemp.gameextrainfo} 了\n`)
             continue
         }
         //换了一个游戏玩
         if(userData.lastPlayedGame != playerTemp.gameextrainfo && userData.lastPlayedGame && playerTemp.gameextrainfo){
             const lastPlayedGame = userData.lastPlayedGame
             await ctx.database.set('SteamUser', {steamId: userData.steamId}, {lastPlayedGame: playerTemp.gameextrainfo})
-            msgArray[userData.userId] = (`${usingSteamName?playerTemp.personaname:userData.userName}不玩${lastPlayedGame}了，开始玩${playerTemp.gameextrainfo}了\n`)
+            msgArray[userData.userId] = (`${usingSteamName?playerTemp.personaname:userData.userName} 不玩 ${lastPlayedGame} 了，开始玩 ${playerTemp.gameextrainfo} 了\n`)
             continue
         }
         //不玩辣
         if(!playerTemp.gameextrainfo && userData.lastPlayedGame){
             const lastPlayedGame = userData.lastPlayedGame
             await ctx.database.set('SteamUser', {steamId: userData.steamId}, {lastPlayedGame: ''})
-            msgArray[userData.userId] = (`${usingSteamName?playerTemp.personaname:userData.userName}停止玩${lastPlayedGame}了\n`)
+            msgArray[userData.userId] = (`${usingSteamName?playerTemp.personaname:userData.userName} 不玩 ${lastPlayedGame} 了\n`)
             continue
         }
     }
@@ -266,7 +267,7 @@ export async function steamInterval(ctx:Context, apiKey:string, useSteamName:boo
     const userdata = await getSteamUserInfoByDatabase(ctx, allUserData, apiKey)
     const changeMessage:{[key:string]:string} = await getUserStatusChanged(ctx, userdata, useSteamName)
     if(Object.keys(changeMessage).length > 0){
-        const supportPlatform = ['onebot','red']
+        const supportPlatform = ['onebot','red','chronocat']
         const channel = await ctx.database.get('channel',{usingSteam:true,platform:supportPlatform})
         for(let i = 0; i < channel.length; i++){
             const groupMessage:Array<string|h> = []

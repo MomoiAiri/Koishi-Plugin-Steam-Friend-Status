@@ -3,7 +3,7 @@ import Puppeteer from 'koishi-plugin-puppeteer'
 import { bindPlayer, getFriendStatusImg, getSelfFriendcode, getSteamUserInfoByDatabase, selectUsersByGroup, steamInterval, unbindAll, unbindPlayer, updataPlayerHeadshots } from './steam'
 import * as fs from 'fs'
 import * as path from 'path'
-import { getGroupHeadshot, getUserHeadshot } from './util'
+import { getGroupHeadshot, getBotHeadshot } from './util'
 
 export const name = 'steam-friend-status'
 
@@ -122,6 +122,9 @@ export function apply(ctx: Context, config:Config) {
   .action(async({session})=>{
     const allUserData = await ctx.database.get('SteamUser',{})
     const users = await selectUsersByGroup(allUserData,session.event.channel.id)
+    if(users.length === 0){
+      return '本群无人绑定'
+    }
     const data = await getSteamUserInfoByDatabase(ctx,users,config.SteamApiKey)
     return await getFriendStatusImg(ctx,data,session.event.selfId)
   })
@@ -137,7 +140,7 @@ async function initBotsHeadshots(ctx:Context){
   const channel = await ctx.database.get('channel',{})
   let tempbots = []
   for(let i = 0; i < channel.length; i++){
-    const platforms = ['onebot','red']
+    const platforms = ['onebot','red','chronocat']
     if(platforms.includes(channel[i].platform)){
       tempbots.push(channel[i].assignee)
       // if(channel[i].usingSteam){
@@ -147,6 +150,6 @@ async function initBotsHeadshots(ctx:Context){
   }
   const bots = [...new Set(tempbots)]
   for(let i = 0; i < bots.length; i++){
-    await getUserHeadshot(ctx,bots[i])
+    await getBotHeadshot(ctx,bots[i])
   }
 }
