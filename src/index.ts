@@ -29,12 +29,14 @@ export interface Config{
   SteamApiKey:string,
   interval:number,
   useSteamName:boolean,
+  broadcastWithImage,
 }
 
 export const Config: Schema<Config> = Schema.object({
   SteamApiKey: Schema.string().description('Steam API Key，获取方式：https://partner.steamgames.com/doc/webapi_overview/auth').required(),
   interval: Schema.number().default(300).description('查询间隔,单位：秒'),
   useSteamName: Schema.boolean().default(false).description('使用Steam昵称,关闭时使用的QQ昵称'),
+  broadcastWithImage: Schema.boolean().default(true).description('播报时附带图片')
 })
 
 export function apply(ctx: Context, config:Config) {  
@@ -54,7 +56,7 @@ export function apply(ctx: Context, config:Config) {
   },{primary:'userId'})
 
   initBotsHeadshots(ctx);
-  ctx.setInterval(function(){steamInterval(ctx,config.SteamApiKey,config.useSteamName)},config.interval * 1000)
+  ctx.setInterval(function(){steamInterval(ctx,config)},config.interval * 1000)
 
   ctx.command('绑定steam <steamid:text>')
   .usage('绑定steam账号，参数可以是好友码也可以是ID')
