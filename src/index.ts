@@ -35,7 +35,7 @@ export interface Config{
 export const Config: Schema<Config> = Schema.object({
   SteamApiKey: Schema.string().description('Steam API Key，获取方式：https://partner.steamgames.com/doc/webapi_overview/auth').required(),
   interval: Schema.number().default(300).description('查询间隔,单位：秒'),
-  useSteamName: Schema.boolean().default(false).description('使用Steam昵称,关闭时使用的QQ昵称'),
+  useSteamName: Schema.boolean().default(true).description('使用Steam昵称,关闭时使用的QQ昵称'),
   broadcastWithImage: Schema.boolean().default(true).description('播报时附带图片')
 })
 
@@ -61,6 +61,9 @@ export function apply(ctx: Context, config:Config) {
   ctx.command('绑定steam <steamid:text>')
   .usage('绑定steam账号，参数可以是好友码也可以是ID')
   .action(async({session},steamid)=>{
+    if(steamid == undefined){
+      return '缺少参数'
+    }
     const result = await bindPlayer(ctx,steamid,session,config.SteamApiKey)
     return result
   })
@@ -80,7 +83,7 @@ export function apply(ctx: Context, config:Config) {
   })
   
   ctx.command('steam <word:text>')
-  .usage('开启或关闭群通报')
+  .usage('开启或关闭群通报，输入[steam on/off]或者[开启/关闭steam]来开关')
   .shortcut('开启steam', { args: ['on'] })
   .shortcut('关闭steam', { args: ['off'] })
   .channelFields(['usingSteam'])
