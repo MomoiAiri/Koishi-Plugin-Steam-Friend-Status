@@ -17,7 +17,7 @@
 | 解绑全部steam | 解除用户在所有群的绑定记录 |
 | steam信息 | 返回用户自己的好友码 |
 | 看看steam | 查看当前群所有绑定用户的状态 |
-| steam on/off | 开启/关闭群播报功能，需要管理员权限，如果平台是red或者chronocat可能会因为无法获取到权限，需要手动在数据库的channel表中开启，默认off |
+| steam on/off | 开启/关闭群播报功能，需要管理员权限，<span style="color:red">如果平台是red或者chronocat可能会因为无法获取到权限，需要手动在数据库的channel表中开启，默认off</span> |
 | steam更新 | 更新所有绑定用户的头像 |
 
 ## 配置说明
@@ -25,7 +25,8 @@
 |--|--|--|
 | SteamApiKey | 无 | 用户查询信息的apikey，可以从[这里](https://partner.steamgames.com/doc/webapi_overview/auth)获取|
 | interval | 300 | 单位（秒），自动查询信息的时间间隔 |
-| useSteamName | false | 播报时使用玩家昵称，false为QQ昵称，true为steam昵称 |
+| useSteamName | true | 播报时使用玩家昵称，false为QQ昵称，true为steam昵称 <span style="color:red">red/satori适配器暂时无法获取到用户昵称，建议打开</span>|
+| broadcastWithImage | true | 播报时附带好友列表图片，关闭可以减少因长图片导致的刷屏 |
 
 ## 其他说明
 - 需要启用koishi的puppeteer功能才能正常加载，如需调整字体格式，可以在node_modules中找到插件的位置，修改/css/steamFriendList.css文件。  
