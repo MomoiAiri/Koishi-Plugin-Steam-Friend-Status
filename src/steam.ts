@@ -73,7 +73,7 @@ export async function bindPlayer(ctx:Context, friendcodeOrId:string, session:Ses
             steamId:playerData.steamid,
             steamName:playerData.personaname,
             effectGroups:[session.event.channel.id],
-            lastPlayedGame:playerData.gameextrainfo == undefined ? playerData.gameextrainfo : undefined,
+            lastPlayedGame:playerData.gameextrainfo != undefined ? playerData.gameextrainfo : undefined,
             lastUpdateTime:Date.now().toString()
         }
         await ctx.database.create('SteamUser',userData)
@@ -88,12 +88,9 @@ export async function bindPlayer(ctx:Context, friendcodeOrId:string, session:Ses
     else{
         const effectGroups = userDataInDatabase[0].effectGroups
         effectGroups.push(channelid)
-        if(session.event.user?.id){
-            await ctx.database.set('SteamUser',{userId:userid},{effectGroups:effectGroups})
-            return '绑定成功'
-        }
+        await ctx.database.set('SteamUser',{userId:userid},{effectGroups:effectGroups})
+        return '绑定成功'
     }
-    return '绑定失败'
 }
 //解绑玩家
 export async function unbindPlayer(ctx:Context, session:Session):Promise<string>{
