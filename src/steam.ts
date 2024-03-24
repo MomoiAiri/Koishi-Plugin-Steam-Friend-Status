@@ -1,5 +1,5 @@
 import { Context, h, Session, sleep } from "koishi"
-import { SteamUser } from "."
+import { Config, SteamUser } from "."
 import path from "path"
 import * as fs from 'fs'
 import exp from "constants"
@@ -69,7 +69,7 @@ export async function bindPlayer(ctx:Context, friendcodeOrId:string, session:Ses
     if(userDataInDatabase.length === 0){
         const userData:SteamUser = {
             userId:userid,
-            userName:session.event.user.name,
+            userName:session.event.user.name != undefined ? session.event.user.name:session.event.user.id,
             steamId:playerData.steamid,
             steamName:playerData.personaname,
             effectGroups:[session.event.channel.id],
@@ -88,16 +88,7 @@ export async function bindPlayer(ctx:Context, friendcodeOrId:string, session:Ses
     else{
         const effectGroups = userDataInDatabase[0].effectGroups
         effectGroups.push(channelid)
-        if(session.event.user?.id&&session.event.user?.name){
-            const userdata:SteamUser = {
-                userId:userid,
-                userName:session.event.user?.name,
-                steamId:playerData.steamid,
-                steamName:playerData.personaname,
-                effectGroups:effectGroups,
-                lastPlayedGame:playerData.gameextrainfo == undefined ? playerData.gameextrainfo : undefined,
-                lastUpdateTime:Date.now().toString()
-            }
+        if(session.event.user?.id){
             await ctx.database.set('SteamUser',{userId:userid},{effectGroups:effectGroups})
             return '绑定成功'
         }
@@ -258,14 +249,13 @@ export async function getFriendStatusImg(ctx:Context, userData:SteamUserInfo, bo
         }
     },botid,botname,gamingUsers,onlineUsers,offlineUsers,steamstatus)
     const image = await page.screenshot({fullPage:true,type:'png',encoding:'binary'})
-    const buffer = Buffer.from(image)
-    return h.image(buffer,'image/png')
+    return h.image(image,'image/png')
 }
 //循环检测玩家状态
-export async function steamInterval(ctx:Context, apiKey:string, useSteamName:boolean){
+export async function steamInterval(ctx:Context, config:Config){
     const allUserData = await ctx.database.get('SteamUser',{})
-    const userdata = await getSteamUserInfoByDatabase(ctx, allUserData, apiKey)
-    const changeMessage:{[key:string]:string} = await getUserStatusChanged(ctx, userdata, useSteamName)
+    const userdata = await getSteamUserInfoByDatabase(ctx, allUserData, config.SteamApiKey)
+    const changeMessage:{[key:string]:string} = await getUserStatusChanged(ctx, userdata, config.useSteamName)
     if(Object.keys(changeMessage).length > 0){
         const supportPlatform = ['onebot','red','chronocat']
         const channel = await ctx.database.get('channel',{usingSteam:true,platform:supportPlatform})
@@ -278,8 +268,10 @@ export async function steamInterval(ctx:Context, apiKey:string, useSteamName:boo
             }
             const userInGroup = selectApiUsersByGroup(userdata,allUserData,channel[i].id)
             if(groupMessage.length > 0){
-                const image = await getFriendStatusImg(ctx, userInGroup, channel[i].assignee)
-                groupMessage.push(image)
+                if(config.useSteamName){
+                    const image = await getFriendStatusImg(ctx, userInGroup, channel[i].assignee)
+                    groupMessage.push(image)
+                }
                 const bot = ctx.bots[`${channel[i].platform}:${channel[i].assignee}`]
                 if(bot){
                     bot.sendMessage(channel[i].id,groupMessage)
