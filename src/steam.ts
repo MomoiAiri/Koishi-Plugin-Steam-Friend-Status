@@ -67,9 +67,19 @@ export async function bindPlayer(ctx:Context, friendcodeOrId:string, session:Ses
     }
     const userDataInDatabase = await ctx.database.get('SteamUser',{userId:userid})
     if(userDataInDatabase.length === 0){
+        let userName = session.event.user.name
+        if(!userName){
+            const response = await ctx.http.get(`https://www.devtool.top/api/qq/info?qq=${userid}`)
+            if(response.code === 200){
+                userName = response.data.nick
+            }
+            else{
+                userName = userid
+            }
+        }
         const userData:SteamUser = {
             userId:userid,
-            userName:session.event.user.name != undefined ? session.event.user.name:session.event.user.id,
+            userName:userName,
             steamId:playerData.steamid,
             steamName:playerData.personaname,
             effectGroups:[session.event.channel.id],
@@ -265,7 +275,7 @@ export async function steamInterval(ctx:Context, config:Config){
             }
             const userInGroup = selectApiUsersByGroup(userdata,allUserData,channel[i].id)
             if(groupMessage.length > 0){
-                if(config.useSteamName){
+                if(config.broadcastWithImage){
                     const image = await getFriendStatusImg(ctx, userInGroup, channel[i].assignee)
                     groupMessage.push(image)
                 }
@@ -293,8 +303,18 @@ export async function getSelfFriendcode(ctx:Context, session:Session):Promise<st
     if(userdata.length==0){
         return '用户未绑定,无法获得好友码'
     }
-    if(userdata[0].userName!=session.event.user.name){
-        await ctx.database.set('SteamUser',{userId:session.event.user.id},{userName:session.event.user.name})
+    let userName = session.event.user.name
+    if(!userName){
+        const response = await ctx.http.get(`https://www.devtool.top/api/qq/info?qq=${session.event.user.id}`)
+        if(response.code === 200){
+            userName = response.data.nick
+        }
+        else{
+            userName = session.event.user.id
+        }
+    }
+    if(userdata[0].userName!=userName){
+        await ctx.database.set('SteamUser',{userId:session.event.user.id},{userName})
     }
     const steamID = userdata[0].steamId
     const steamFriendCode = BigInt(steamID) - BigInt(steamIdOffset)
