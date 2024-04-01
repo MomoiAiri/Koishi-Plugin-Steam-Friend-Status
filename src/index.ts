@@ -6,6 +6,8 @@ import * as path from 'path'
 import { getGroupHeadshot, getBotHeadshot } from './util'
 
 export const name = 'steam-friend-status'
+export const sourcepath = path.join(__dirname,`../../../data/${name}`)
+export const imgpath = path.join(sourcepath,'img')
 
 export const inject = ['puppeteer']
 declare module 'koishi'{
@@ -142,6 +144,15 @@ export function apply(ctx: Context, config:Config) {
 }
 //初始化QQ相关平台的bot头像
 async function initBotsHeadshots(ctx:Context){
+  //koishi-app/node_modules/plugin_name/lib/index.js  start
+  //koishi-app/external/plugin_name/src/index.ts  dev
+  //将资源文件放在koishi的data目录下
+  if(!fs.existsSync(sourcepath)){
+    fs.mkdirSync(sourcepath)
+    if(!fs.existsSync(imgpath)){
+      fs.mkdirSync(imgpath)
+    }
+  }
   const channel = await ctx.database.get('channel',{})
   let tempbots = []
   for(let i = 0; i < channel.length; i++){

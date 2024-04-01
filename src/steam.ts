@@ -1,5 +1,5 @@
 import { Context, h, Session, sleep } from "koishi"
-import { Config, SteamUser } from "."
+import { Config, imgpath, SteamUser } from "."
 import path from "path"
 import * as fs from 'fs'
 import exp from "constants"
@@ -219,7 +219,7 @@ export async function getFriendStatusImg(ctx:Context, userData:SteamUserInfo, bo
         var onlineList = document.getElementById('ul-online')
         var offlineList = document.getElementById('ul-offline')
         var titles = document.getElementsByClassName('title')
-        botHeadshot.setAttribute('src',`../img/bot${botid}.jpg`)
+        botHeadshot.setAttribute('src',`../../../../data/steam-friend-status/img/bot${botid}.jpg`)
         botName.innerHTML = `<b>${botname}</b>`
         titles[0].innerHTML = `游戏中（${gamingUsers.length}）`
         titles[1].innerHTML = `在线好友（${onlineUsers.length}）`
@@ -227,7 +227,7 @@ export async function getFriendStatusImg(ctx:Context, userData:SteamUserInfo, bo
         for(let i = 0; i < gamingUsers.length; i++){
             const li = document.createElement('li')
             li.setAttribute('class','friend')
-            li.innerHTML = `<img src="../img/steamuser${gamingUsers[i].steamid}.jpg" class="headshot-online">
+            li.innerHTML = `<img src="../../../../data/steam-friend-status/img/steamuser${gamingUsers[i].steamid}.jpg" class="headshot-online">
                             <div class="name-and-status">
                                 <p class="name-gaming">${gamingUsers[i].personaname}</p>
                                 <p class="status-gaming">${gamingUsers[i].gameextrainfo}</p>
@@ -237,7 +237,7 @@ export async function getFriendStatusImg(ctx:Context, userData:SteamUserInfo, bo
         for(let i = 0; i < onlineUsers.length; i++){
             const li = document.createElement('li')
             li.setAttribute('class','friend')
-            li.innerHTML = `<img src="../img/steamuser${onlineUsers[i].steamid}.jpg" class="headshot-online">
+            li.innerHTML = `<img src="../../../../data/steam-friend-status/img/steamuser${onlineUsers[i].steamid}.jpg" class="headshot-online">
                             <div class="name-and-status">
                                 <p class="name-online">${onlineUsers[i].personaname}</p>
                                 <p class="status-online">${steamstatus[onlineUsers[i].personastate]}</p>
@@ -247,7 +247,7 @@ export async function getFriendStatusImg(ctx:Context, userData:SteamUserInfo, bo
         for(let i = 0; i < offlineUsers.length; i++){
             const li = document.createElement('li')
             li.setAttribute('class','friend')
-            li.innerHTML = `<img src="../img/steamuser${offlineUsers[i].steamid}.jpg" class="headshot-offline">
+            li.innerHTML = `<img src="../../../../data/steam-friend-status/img/steamuser${offlineUsers[i].steamid}.jpg" class="headshot-offline">
                             <div class="name-and-status">
                                 <p class="name-offline">${offlineUsers[i].personaname}</p>
                                 <p class="status-offline">${steamstatus[offlineUsers[i].personastate]}</p>
@@ -293,7 +293,7 @@ export async function updataPlayerHeadshots(ctx:Context, apiKey:string){
     const userdata = (await getSteamUserInfoByDatabase(ctx, allUserData, apiKey)).response.players
     for(let i = 0; i < userdata.length; i++){
         const headshot = await ctx.http.get(userdata[i].avatarmedium,{responseType:'arraybuffer'})
-        const filepath = path.join(__dirname,`img/steamuser${userdata[i].steamid}.jpg`)
+        const filepath = path.join(imgpath,`steamuser${userdata[i].steamid}.jpg`)
         fs.writeFileSync(filepath,Buffer.from(headshot))
     }
 }
