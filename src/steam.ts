@@ -3,7 +3,8 @@ import { Config, imgpath, SteamUser } from "."
 import path from "path"
 import * as fs from 'fs'
 import exp from "constants"
-import { group } from "console"
+import { error, group } from "console"
+import { match } from "assert"
 
 const steamIdOffset:number = 76561197960265728
 const steamWebApiUrl = 'http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/'
@@ -203,10 +204,23 @@ export async function getFriendStatusImg(ctx:Context, userData:SteamUserInfo, bo
     onlineUsers.sort((a,b)=>a.personastate - b.personastate)
     const offlineUsers = userData.response.players.filter(player => player.personastate == 0)
     const url = path.join(__dirname,'html/steamFriendList.html')
-    const response = await ctx.http.get(`https://www.devtool.top/api/qq/info?qq=${botid}`)
-    let botname = ''
-    if(response.code === 200){
-        botname =response.data.nick
+    let botname = 'Koishi'
+    try{
+        const response = await ctx.http.get(`https://users.qzone.qq.com/fcg-bin/cgi_get_portrait.fcg?uins=${botid}`)
+        if(response.code === 200){
+            const regex = /(\[[^\]]+\])/
+            const match = response.match(regex)
+            if(match){
+                const arr = JSON.parse(match[1])
+                botname = arr[6]
+            }
+            else{
+                throw 'error'
+            }
+        }
+    }
+    catch{
+        console.log('获取Bot昵称失败')
     }
     const page = await ctx.puppeteer.page()
     await page.setViewport({width:227,height:224 + userData.response.players.length * 46})
