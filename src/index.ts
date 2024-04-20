@@ -16,6 +16,7 @@ declare module 'koishi'{
   }
   interface Channel{
     usingSteam:boolean,
+    channelName:string,
   }
 }
 export interface SteamUser{
@@ -31,20 +32,23 @@ export interface Config{
   SteamApiKey:string,
   interval:number,
   useSteamName:boolean,
-  broadcastWithImage,
+  broadcastWithImage:boolean,
+  useGroupHead:boolean,
 }
 
 export const Config: Schema<Config> = Schema.object({
   SteamApiKey: Schema.string().description('Steam API Key，获取方式：https://partner.steamgames.com/doc/webapi_overview/auth').required(),
   interval: Schema.number().default(300).description('查询间隔,单位：秒'),
   useSteamName: Schema.boolean().default(true).description('使用Steam昵称,关闭时使用的QQ昵称'),
-  broadcastWithImage: Schema.boolean().default(true).description('播报时附带图片')
+  broadcastWithImage: Schema.boolean().default(true).description('播报时附带图片'),
+  useGroupHead: Schema.boolean().default(false).description('替换Bot头像与ID为群头像，该功能无法在onebot平台上正常运行'),
 })
 
 export function apply(ctx: Context, config:Config) {  
   // write your plugin here
   ctx.model.extend('channel', {
-    usingSteam:{type:'boolean',initial:false,nullable:false}
+    usingSteam:{type:'boolean',initial:false,nullable:false},
+    channelName:{type:'string',initial:null,nullable:true},
   })
 
   ctx.model.extend('SteamUser', {
@@ -127,13 +131,23 @@ export function apply(ctx: Context, config:Config) {
   ctx.command('看看steam')
   .usage('查看当前绑定过的玩家状态')
   .action(async({session})=>{
+    if(session.event.channel.name){
+      ctx.database.set('channel',{id:session.channelId},{channelName:session.event.channel.name})
+    }
     const allUserData = await ctx.database.get('SteamUser',{})
     const users = await selectUsersByGroup(allUserData,session.event.channel.id)
     if(users.length === 0){
       return '本群无人绑定'
     }
     const data = await getSteamUserInfoByDatabase(ctx,users,config.SteamApiKey)
-    return await getFriendStatusImg(ctx,data,session.event.selfId)
+    if(!config.useGroupHead){
+      return await getFriendStatusImg(ctx,data,session.event.selfId)
+    }
+    else{
+      await getGroupHeadshot(ctx,session.event.channel.id)
+      return await getFriendStatusImg(ctx,data,session.event.selfId,session.event.channel.id)
+    }
+    
   })
 
   ctx.command('steam信息')
@@ -159,9 +173,9 @@ async function initBotsHeadshots(ctx:Context){
     const platforms = ['onebot','red','chronocat']
     if(platforms.includes(channel[i].platform)){
       tempbots.push(channel[i].assignee)
-      // if(channel[i].usingSteam){
-      //   await getGroupHeadshot(ctx,channel[i].id)
-      // }
+      if(channel[i].usingSteam){
+        await getGroupHeadshot(ctx,channel[i].id)
+      }
     }
   }
   const bots = [...new Set(tempbots)]

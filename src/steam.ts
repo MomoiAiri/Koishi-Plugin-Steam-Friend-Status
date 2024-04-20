@@ -198,34 +198,43 @@ export async function getUserStatusChanged(ctx:Context, steamUserInfo:SteamUserI
     return msgArray
 }
 //获取好友状态图片
-export async function getFriendStatusImg(ctx:Context, userData:SteamUserInfo, botid:string){
+export async function getFriendStatusImg(ctx:Context, userData:SteamUserInfo, botid:string, channelid?:string){
     const gamingUsers = userData.response.players.filter(player => player.gameextrainfo)
     const onlineUsers = userData.response.players.filter(player => player.personastate !=0 && !player.gameextrainfo)
     onlineUsers.sort((a,b)=>a.personastate - b.personastate)
     const offlineUsers = userData.response.players.filter(player => player.personastate == 0)
     const url = path.join(__dirname,'html/steamFriendList.html')
     let botname = 'Koishi'
-    try{
-        const response = await ctx.http.get(`https://users.qzone.qq.com/fcg-bin/cgi_get_portrait.fcg?uins=${botid}`)
-        if(response.code === 200){
-            const regex = /(\[[^\]]+\])/
-            const match = response.match(regex)
-            if(match){
-                const arr = JSON.parse(match[1])
-                botname = arr[6]
-            }
-            else{
-                throw 'error'
+    let headshotfileName = ''
+    if(channelid){
+        botname = (await ctx.database.get('channel',{id:channelid}))[0].channelName
+        headshotfileName = `group${channelid}.jpg`
+    }
+    else{
+        try{
+            headshotfileName = `bot${botid}.jpg`
+            const response = await ctx.http.get(`https://users.qzone.qq.com/fcg-bin/cgi_get_portrait.fcg?uins=${botid}`)
+            if(response){
+                const regex = /(\[[^\]]+\])/
+                const match = response.match(regex)
+                if(match){
+                    const arr = JSON.parse(match[1])
+                    botname = arr[6]
+                }
+                else{
+                    throw 'error'
+                }
             }
         }
+        catch{
+            console.log('获取Bot昵称失败')
+        }
     }
-    catch{
-        console.log('获取Bot昵称失败')
-    }
+    
     const page = await ctx.puppeteer.page()
     await page.setViewport({width:227,height:224 + userData.response.players.length * 46})
     await page.goto(url)
-    await page.evaluate((botid,botname,gamingUsers,onlineUsers,offlineUsers,steamstatus)=>{
+    await page.evaluate((headshotfileName,botname,gamingUsers,onlineUsers,offlineUsers,steamstatus)=>{
         var bot = document.getElementsByClassName('bot')[0]
         var botHeadshot = bot.querySelector('img')
         var botName = bot.querySelector('p')
@@ -233,7 +242,7 @@ export async function getFriendStatusImg(ctx:Context, userData:SteamUserInfo, bo
         var onlineList = document.getElementById('ul-online')
         var offlineList = document.getElementById('ul-offline')
         var titles = document.getElementsByClassName('title')
-        botHeadshot.setAttribute('src',`../../../../data/steam-friend-status/img/bot${botid}.jpg`)
+        botHeadshot.setAttribute('src',`../../../../data/steam-friend-status/img/${headshotfileName}`)
         botName.innerHTML = `<b>${botname}</b>`
         titles[0].innerHTML = `游戏中（${gamingUsers.length}）`
         titles[1].innerHTML = `在线好友（${onlineUsers.length}）`
@@ -268,7 +277,7 @@ export async function getFriendStatusImg(ctx:Context, userData:SteamUserInfo, bo
                             </div>`
             offlineList.appendChild(li)
         }
-    },botid,botname,gamingUsers,onlineUsers,offlineUsers,steamstatus)
+    },headshotfileName,botname,gamingUsers,onlineUsers,offlineUsers,steamstatus)
     const image = await page.screenshot({fullPage:true,type:'png',encoding:'binary'})
     return h.image(image,'image/png')
 }
@@ -290,7 +299,13 @@ export async function steamInterval(ctx:Context, config:Config){
             const userInGroup = selectApiUsersByGroup(userdata,allUserData,channel[i].id)
             if(groupMessage.length > 0){
                 if(config.broadcastWithImage){
-                    const image = await getFriendStatusImg(ctx, userInGroup, channel[i].assignee)
+                    let image
+                    if(!config.useGroupHead){
+                        image = await getFriendStatusImg(ctx, userInGroup, channel[i].assignee)
+                    }
+                    else{
+                        image = await getFriendStatusImg(ctx, userInGroup, channel[i].assignee,channel[i].id)
+                    }
                     groupMessage.push(image)
                 }
                 const bot = ctx.bots[`${channel[i].platform}:${channel[i].assignee}`]
