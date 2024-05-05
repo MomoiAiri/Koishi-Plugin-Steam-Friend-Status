@@ -279,6 +279,7 @@ export async function getFriendStatusImg(ctx:Context, userData:SteamUserInfo, bo
         }
     },headshotfileName,botname,gamingUsers,onlineUsers,offlineUsers,steamstatus)
     const image = await page.screenshot({fullPage:true,type:'png',encoding:'binary'})
+    await page.close()
     return h.image(image,'image/png')
 }
 //循环检测玩家状态
