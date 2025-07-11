@@ -9,7 +9,7 @@ export const name = 'steam-friend-status'
 export const sourcepath = path.join(__dirname,`../../../data/${name}`)
 export const imgpath = path.join(sourcepath,'img')
 
-export const inject = ['puppeteer']
+export const inject = ['puppeteer','database']
 declare module 'koishi'{
   interface Tables{
     SteamUser:SteamUser
